@@ -75,6 +75,10 @@ export const LEDGER_FILES = {
  * log. Read-modify-write like a chat file, not append-only like the ledgers.
  */
 export const SOURCES_FILE = path.join(PATHS.graph, "sources.json");
+/** The vault-sync ledger (append-only JSONL, contracts/graph.ts
+ *  VaultSyncEntry): one line per COMPLETED vault-note import or rename —
+ *  a source's current version is its latest line. */
+export const VAULT_SYNC_FILE = path.join(PATHS.graph, "vault-sync.jsonl");
 /** The layout ledger (read-modify-write like sources.json): nodeId →
  *  {x,y} resting positions from the incremental settle (core/layout.ts).
  *  Carries an updatedAt stamp for future live-physics conflict handling. */

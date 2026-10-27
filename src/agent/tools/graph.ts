@@ -71,7 +71,8 @@ export function proberGraphTools(ctx: GraphToolContext): Record<string, AgentToo
 				if (propositions.length === 0) {
 					return `No propositions born in session "${session}". Call list_sessions for the current ids.`;
 				}
-				const lines = propositions.map((p) => `- ${p.name}`);
+				// Stale = its vault note changed and no longer states it.
+				const lines = propositions.map((p) => `- ${p.name}${p.stale ? " (stale: its source note has changed)" : ""}`);
 				return `${propositions.length} proposition(s) covered in this session:\n${lines.join("\n")}`;
 			}),
 		},

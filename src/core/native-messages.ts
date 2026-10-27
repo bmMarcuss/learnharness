@@ -246,6 +246,9 @@ export interface GraphContextPick {
 	id: string;
 	name: string;
 	statement: string;
+	/** Set server-side, never trusted from the client: only outdated
+	 *  vault-note versions support this proposition (core/vault-sync.ts). */
+	stale?: boolean;
 }
 
 /** The session's map context (owner, 2026-10-04): a SEPARATE custom
@@ -270,7 +273,7 @@ export function newGraphContextMessage(picks: readonly GraphContextPick[], chain
 		"[Session context] — picked from the learner's knowledge map when starting this session:",
 		"",
 		"Propositions (id — name: statement; the problem tool's target field uses these ids):",
-		...picks.map((p) => `- [${p.id}] ${p.name}: ${p.statement}`),
+		...picks.map((p) => `- [${p.id}] ${p.name}: ${p.statement}${p.stale ? " (stale: its source note has changed since it was extracted)" : ""}`),
 	];
 	if (chains.length > 0) {
 		lines.push("", "Reasoning chains among them (premises → conclusion):", ...chains.map((c) => `- ${c}`));

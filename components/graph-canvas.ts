@@ -286,6 +286,8 @@ export const LABELS_FADE_RATIO = 0.5;
 
 const GLOW_SCALE = 1.7; // halo outer radius = node radius x this (proportional, like blurring a copy of the disc)
 const GLOW_ALPHA = 0.3; // halo opacity at the disc edge, fading outward
+/** Stale nodes (vault sync: their note changed) — disc + label opacity. */
+const STALE_ALPHA = 0.35;
 const HOVER_FADE_MS = 180; // hover halo opacity fade length
 const ZOOM_EASE_MS = 45; // wheel-zoom glide: exponential-ease time constant (~250ms per notch)
 
@@ -584,6 +586,8 @@ export class GraphCanvasRenderer {
 	private nodeById = new Map<string, CanvasNode>();
 	private settings: GraphRenderSettings | null = null;
 	private visible: ReadonlySet<string> | null = null;
+	/** Stale node ids (snapshot.stale) — drawn dimmed, still pickable. */
+	private stale: ReadonlySet<string> = new Set();
 
 	// ── Live physics ──
 	// One d3-force sim shared with the server settle (createGraphSimulation
@@ -637,6 +641,7 @@ export class GraphCanvasRenderer {
 	private geoVersion = 0; // bump = geometry inputs changed
 	private builtVersion = -1; // version the cache was built at
 	private nodesPath: Path2D | null = null;
+	private staleNodesPath: Path2D | null = null;
 	private shaftsPath: Path2D = new Path2D();
 	private headsPath: Path2D = new Path2D();
 	private regionCanvas: HTMLCanvasElement | null = null;
@@ -858,6 +863,12 @@ export class GraphCanvasRenderer {
 		);
 		ctx.font = prevFont;
 		if (changed) this.markDirty();
+	}
+
+	setStale(stale: ReadonlySet<string>): void {
+		this.stale = stale;
+		this.geoVersion++; // stale discs live in their own path
+		this.markDirty();
 	}
 
 	setVisible(visible: ReadonlySet<string> | null): void {
@@ -1239,12 +1250,15 @@ export class GraphCanvasRenderer {
 		// Node discs: one Path2D, one fill() per frame. Implication nodes
 		// are pure geometry — never a disc, never a label, never picked.
 		const nodesPath = new Path2D();
+		const staleNodesPath = new Path2D();
 		for (const n of data.nodes) {
 			if (!isVisible(n.id) || isImpNodeId(n.id)) continue;
-			nodesPath.moveTo(n.x + nodeR, n.y);
-			nodesPath.arc(n.x, n.y, nodeR, 0, Math.PI * 2);
+			const path = this.stale.has(n.id) ? staleNodesPath : nodesPath;
+			path.moveTo(n.x + nodeR, n.y);
+			path.arc(n.x, n.y, nodeR, 0, Math.PI * 2);
 		}
 		this.nodesPath = nodesPath;
+		this.staleNodesPath = staleNodesPath;
 
 		// Edge shafts + arrowheads (rendering arc, owner 2026-09-30): all
 		// arrows are PLAIN single shafts — the old double-shaft glyph is
@@ -1664,6 +1678,12 @@ export class GraphCanvasRenderer {
 		// 4. Nodes: one cached Path2D, one fill.
 		ctx.fillStyle = data.colors.node;
 		ctx.fill(this.nodesPath);
+		if (this.staleNodesPath) {
+			ctx.save();
+			ctx.globalAlpha = STALE_ALPHA;
+			ctx.fill(this.staleNodesPath);
+			ctx.restore();
+		}
 
 		// 6. Node labels — one global gate, faded together. World-scaled
 		// with the graph (they grow as you zoom in, Obsidian-style).
@@ -1674,6 +1694,7 @@ export class GraphCanvasRenderer {
 			for (const [id, lines] of this.labelLines) {
 				const n = this.nodeById.get(id);
 				if (!n) continue;
+				ctx.globalAlpha = this.stale.has(id) ? nodeAlpha * STALE_ALPHA : nodeAlpha;
 				drawNameLines(ctx, n.x, n.y, lines, this.world, data.colors.label);
 			}
 			ctx.restore();

@@ -316,6 +316,11 @@ export function parseGraphSettingsBody(body: unknown): SettingsBodyResult<GraphS
 		}
 		settings.extractionChunkTokens = floored;
 	}
+	if (raw.vaultPath !== undefined) {
+		if (typeof raw.vaultPath !== "string") return { ok: false, error: "vaultPath must be a string" };
+		// Blank = unset (absence is the unset, as for the chunk budget).
+		if (raw.vaultPath.trim() !== "") settings.vaultPath = raw.vaultPath.trim();
+	}
 	return { ok: true, settings };
 }
 

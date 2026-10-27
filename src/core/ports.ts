@@ -25,6 +25,7 @@ import type {
 	SessionCheckpoint,
 	TurnUsage,
 	NotesSource,
+	VaultSyncEntry,
 } from "./contracts.ts";
 import type { UserSettings } from "./settings.ts";
 
@@ -104,6 +105,11 @@ export interface GraphStore {
 	/** Append one run's usage to a source record — idempotent per
 	 *  startedAt, mirroring ChatRecord.extractions. */
 	appendSourceUsage(id: string, entry: ExtractionRunUsage): void;
+
+	/** The vault-sync ledger (config.VAULT_SYNC_FILE, append-only): one
+	 *  line per completed vault-note version. */
+	appendVaultSync(entry: VaultSyncEntry): void;
+	readVaultSync(): VaultSyncEntry[];
 
 	/** The layout ledger (config.POSITIONS_FILE): nodeId → resting {x,y}.
 	 *  WRITTEN ONLY by the incremental settle after a merge (core/layout.ts

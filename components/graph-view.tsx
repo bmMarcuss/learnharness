@@ -64,9 +64,9 @@
  */
 
 import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { NotesImportErrors, useNotesImport } from "@/components/notes-import.tsx";
+import { NotesImportErrors, useNotesImport, useVaultSync } from "@/components/notes-import.tsx";
 import Link from "next/link";
-import { FileTextIcon, ListTreeIcon, Loader2Icon, SearchIcon, SettingsIcon, UploadIcon, WaypointsIcon } from "lucide-react";
+import { FileTextIcon, FolderSyncIcon, ListTreeIcon, Loader2Icon, SearchIcon, SettingsIcon, UploadIcon, WaypointsIcon } from "lucide-react";
 import { incrementalLayout, propositionSessionHref, type GraphCostSummary, type GraphNode, type GraphSnapshot } from "@/src/core";
 import { planCostLabel } from "@/components/usage-format";
 import { GraphCanvasRenderer, type GraphRenderSettings } from "./graph-canvas.ts";
@@ -846,6 +846,8 @@ export function GraphChromeRow({
 	searchInputRef,
 	fileInputRef,
 	onImportFiles,
+	syncing,
+	onSyncVault,
 	settings,
 	changeSettings,
 	onOpenChains,
@@ -860,6 +862,9 @@ export function GraphChromeRow({
 	searchInputRef: React.RefObject<HTMLInputElement | null>;
 	fileInputRef: React.RefObject<HTMLInputElement | null>;
 	onImportFiles: (files: FileList | null) => void;
+	/** The vault sync (Settings → Graph → Vault folder). */
+	syncing: boolean;
+	onSyncVault: () => void;
 	settings: GraphRenderSettings;
 	changeSettings: (update: (cur: RenderSettings) => RenderSettings) => void;
 	/** Opens the chain table overlay (the chains-overlay plan,
@@ -913,7 +918,7 @@ export function GraphChromeRow({
 			)}
 			{/* Import notes — its own container (36px, header band); ALWAYS
 			    rendered (the empty-graph ruling above — the entry point). */}
-			<div className="shrink-0 rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur">
+			<div className="flex shrink-0 rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur">
 				<input
 					ref={fileInputRef}
 					type="file"
@@ -941,6 +946,18 @@ export function GraphChromeRow({
 				>
 						<UploadIcon className="size-3" />
 						{importing ? "Importing…" : "Import notes…"}
+					</button>
+				</Hint>
+				<Hint label="Import new and changed Concepts/ notes from your vault" side="bottom">
+					<button
+						type="button"
+						disabled={syncing}
+						onClick={onSyncVault}
+						data-testid="sync-vault"
+						className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
+					>
+						<FolderSyncIcon className="size-3" />
+						{syncing ? "Syncing…" : "Sync vault"}
 					</button>
 				</Hint>
 			</div>
@@ -1113,6 +1130,15 @@ export function GraphView({
 		},
 	});
 	const { importing, onImportFiles } = notesImport;
+	// The vault sync: same start nudge as an import; a rename-only sync runs
+	// no pipeline job, so refetch on finish rather than waiting on the feed.
+	const vaultSync = useVaultSync({
+		onStart: () => {
+			refreshActivity();
+			setTimeout(() => refreshActivity(), 600);
+		},
+		onFinish: () => setRefreshTick((t) => t + 1),
+	});
 
 	// Background pipeline status: read /api/graph/status; whenever a run
 	// LEAVES the feed (finished / aborted / failed), refetch the graph.
@@ -1452,6 +1478,13 @@ export function GraphView({
 		setSelected((sel) => (sel && visibleIds.has(sel.node.id) ? sel : null));
 	}, [visibleIds, query]);
 
+	// Feed #3b — staleness (vault sync): stale discs + labels draw dimmed.
+	// `isEmpty` in the deps for the same null-renderer reason as Feed #2.
+	const staleIds = useMemo(() => new Set(snapshot?.stale ?? []), [snapshot]);
+	useEffect(() => {
+		rendererRef.current?.setStale(staleIds);
+	}, [staleIds, isEmpty]);
+
 	// Feed #4 — region tuning. `isEmpty` in the deps (same as Feed #2):
 	// the settings fetch resolves BEFORE the snapshot creates the renderer,
 	// so the load-time run hits a null renderer and would never re-fire —
@@ -1610,6 +1643,8 @@ export function GraphView({
 					searchInputRef={searchInputRef}
 					fileInputRef={fileInputRef}
 					onImportFiles={onImportFiles}
+					syncing={vaultSync.syncing}
+					onSyncVault={vaultSync.sync}
 					settings={settings}
 					changeSettings={changeSettings}
 					onOpenChains={() => setChainsOpen(true)}
@@ -1617,6 +1652,10 @@ export function GraphView({
 			</div>
 
 			<NotesImportErrors errors={notesImport.errors} />
+			{vaultSync.summary && (
+				<p role="status" className="max-w-full text-xs text-muted-foreground">{vaultSync.summary}</p>
+			)}
+			<NotesImportErrors errors={vaultSync.errors} />
 			{/* Top-right tail (owner, 2026-09-20): the pipeline cost number —
 			    just a number, hover-highlighted, dropdown breakdown — then
 			    the running-pipeline pills under it. Lives BELOW the actions
@@ -1649,6 +1688,14 @@ export function GraphView({
 					className="lh-no-drag absolute z-10 w-80 max-w-[calc(100%-1rem)] rounded-xl border bg-card p-4 text-left shadow-lg"
 				>
 					<div className="text-sm font-medium leading-snug">{selected.node.name}</div>
+					{staleIds.has(selected.node.id) && (
+						<div
+							data-testid="node-stale-badge"
+							className="mt-1 inline-block rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground"
+						>
+							stale: note changed
+						</div>
+					)}
 					<div className="mt-1 text-xs leading-relaxed text-muted-foreground">{selected.node.statement}</div>
 					{selected.sourceIds.length > 0 ? (
 						<div className="mt-3 flex flex-col gap-1">
@@ -1704,6 +1751,7 @@ export function GraphView({
 				chains={snapshot?.chains ?? []}
 				sessions={snapshot?.sessions ?? {}}
 				fileSources={snapshot?.fileSources ?? {}}
+				stale={staleIds}
 				onClose={() => {
 					setChainsOpen(false);
 					onChainSelectClose?.();

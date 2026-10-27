@@ -1,6 +1,6 @@
 import { chainsForSelection, formatChainLine } from "@/src/core";
 import { newGraphContextMessage, type GraphContextPick } from "@/src/core";
-import { compactionInFlight, createChat, isTurnRunning, listChats, readSettingsRecord, stores, titleFromPrompt } from "@/src/server";
+import { compactionInFlight, createChat, isTurnRunning, listChats, readSettingsRecord, staleGraphItemIds, stores, titleFromPrompt } from "@/src/server";
 import type { ChatListItem } from "@/src/core";
 
 /** The session picker's list: record-derived summaries (phase, pending
@@ -65,7 +65,9 @@ export async function POST(req: Request) {
 		const chainLines = chainsForSelection(pickedNodes, stores.graphStore.readChains()).map((c) =>
 			formatChainLine(c, Object.fromEntries(byId)),
 		);
-		stores.chatStore.saveMessages(chat.id, [newGraphContextMessage(picks, chainLines)]);
+		const stale = staleGraphItemIds();
+		const flagged = picks.map(({ id, name, statement }) => ({ id, name, statement, ...(stale.has(id) ? { stale: true } : {}) }));
+		stores.chatStore.saveMessages(chat.id, [newGraphContextMessage(flagged, chainLines)]);
 	}
 	return Response.json({ id: chat.id, title: chat.title });
 }

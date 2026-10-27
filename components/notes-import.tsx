@@ -88,3 +88,59 @@ export function NotesImportErrors({ errors }: { errors: readonly string[] }) {
 		<p key={i} role="alert" className="max-w-full whitespace-pre-wrap break-words text-xs text-red-400">{error}</p>
 	))}</>;
 }
+
+// ─── the vault sync (POST /api/graph/vault-sync) ─────────────────────────────
+
+/** Transport mirror of the server's VaultSyncSummary. */
+export interface VaultSyncSummary {
+	imported: string[];
+	reextracted: string[];
+	renamed: Array<{ from: string; to: string }>;
+	unchanged: number;
+	failed: Array<{ relPath: string; error: string; code?: string }>;
+}
+
+export function formatVaultSyncSummary(s: VaultSyncSummary): string {
+	const parts = [
+		s.imported.length > 0 ? `${s.imported.length} imported` : null,
+		s.reextracted.length > 0 ? `${s.reextracted.length} re-extracted` : null,
+		s.renamed.length > 0 ? `${s.renamed.length} renamed` : null,
+		`${s.unchanged} unchanged`,
+		s.failed.length > 0 ? `${s.failed.length} failed` : null,
+	].filter((p): p is string => p !== null);
+	return `Vault synced: ${parts.join(", ")}.`;
+}
+
+/** One sync at a time; the summary line and per-file errors survive until
+ *  the next sync. */
+export function useVaultSync(callbacks: { onStart?: () => void; onFinish?: () => void } = {}) {
+	const [syncing, setSyncing] = useState(false);
+	const [summary, setSummary] = useState<string | null>(null);
+	const [errors, setErrors] = useState<string[]>([]);
+	const pending = useRef(false);
+	const sync = async () => {
+		if (pending.current) return;
+		pending.current = true;
+		setSyncing(true);
+		setSummary(null);
+		setErrors([]);
+		try {
+			callbacks.onStart?.();
+			const response = await fetch("/api/graph/vault-sync", { method: "POST" });
+			const body = (await response.json().catch(() => null)) as (VaultSyncSummary & { error?: string }) | null;
+			if (!response.ok || !body || !Array.isArray(body.failed)) {
+				setErrors([`Vault sync: ${body?.error ?? `HTTP ${response.status}`}`]);
+				return;
+			}
+			setSummary(formatVaultSyncSummary(body));
+			setErrors(body.failed.map((f) => `${f.relPath}: ${f.error}${f.code ? `\n${f.code}` : ""}`));
+		} catch (error) {
+			setErrors([`Vault sync: ${error instanceof Error ? error.message : String(error)}`]);
+		} finally {
+			pending.current = false;
+			setSyncing(false);
+			callbacks.onFinish?.();
+		}
+	};
+	return { syncing, summary, errors, sync: () => void sync() };
+}

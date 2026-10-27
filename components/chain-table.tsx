@@ -96,11 +96,14 @@ interface ClusterGroup {
 /** The table's pure body — exported for SSR pins (the render-suite
  *  discipline). All state (query, sort, selection, expansion) arrives
  *  via props; the overlay wrapper below owns it. */
+const NO_STALE: ReadonlySet<string> = new Set();
+
 export function ChainTableBody({
 	nodes,
 	chains: storedChains,
 	sessions,
 	fileSources,
+	stale = NO_STALE,
 	query,
 	onQuery,
 	sort,
@@ -121,6 +124,8 @@ export function ChainTableBody({
 	chains: GraphChain[];
 	sessions: Record<string, string>;
 	fileSources: Record<string, string>;
+	/** Vault-sync staleness (snapshot.stale) — marked, still selectable. */
+	stale?: ReadonlySet<string>;
 	query: string;
 	onQuery: (v: string) => void;
 	sort: ChainSort;
@@ -469,6 +474,11 @@ export function ChainTableBody({
 															/>
 															<span className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
 																{node.statement}
+																{stale.has(id) && (
+																	<span data-testid={`prop-stale-${id}`} className="ml-1.5 rounded-full border px-1.5 text-[10px]">
+																		stale: note changed
+																	</span>
+																)}
 															</span>
 															<span className="w-14 shrink-0" />
 															<span className="w-20 shrink-0" />
@@ -599,6 +609,7 @@ export function ChainTableOverlay({
 	chains: storedChains,
 	sessions,
 	fileSources,
+	stale,
 	onClose,
 	/** PRACTICE SELECT (owner vision, 2026-10-04): the selection is
 	 *  PERSISTENT and caller-owned — when these props are present the
@@ -615,6 +626,7 @@ export function ChainTableOverlay({
 	chains: GraphChain[];
 	sessions: Record<string, string>;
 	fileSources: Record<string, string>;
+	stale?: ReadonlySet<string>;
 	onClose: () => void;
 	selectMode?: boolean;
 	controlledSelection?: ReadonlySet<string>;
@@ -686,6 +698,7 @@ export function ChainTableOverlay({
 					chains={storedChains}
 					sessions={sessions}
 					fileSources={fileSources}
+					stale={stale}
 					query={query}
 					onQuery={setQuery}
 					sort={sort}

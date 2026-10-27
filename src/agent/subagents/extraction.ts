@@ -21,6 +21,7 @@ import type {
 	ChatRecord,
 	ExtractionRunUsage,
 	ExtractionStageUsage,
+	ProvenancePoint,
 	SessionFindings,
 } from "../../core/contracts.ts";
 import { getGraph, mergeFindings, type DerivedGraph, type EmissionStats, type GraphDeps } from "../../core/graph.ts";
@@ -445,10 +446,15 @@ export const NOTES_EXTRACTOR_INSTRUCTIONS = `${NOTES_PREAMBLE}\n\n${EXTRACTION_C
 // yet (the first stretch runs bare). Ids ride VERBATIM — that is what
 // the extractor references in its chains (the merger's mixed-namespace
 // resolution passes them through).
-export function sourceDigest(graph: DerivedGraph, sourceId: string): string {
+// A vault-synced re-extraction passes its content version: only what THIS
+// version already yielded counts as the source's graph so far — an outdated
+// version's ids must be restated (and so re-stamped), never referenced.
+export function sourceDigest(graph: DerivedGraph, sourceId: string, version?: string): string {
 	const nameOf = new Map(graph.nodes.map((n) => [n.id, n.name]));
-	const ours = graph.nodes.filter((n) => n.provenance.some((pt) => pt.chatId === sourceId));
-	const ourChains = graph.chains.filter((c) => c.provenance.some((pt) => pt.chatId === sourceId));
+	const ownPoint = (pt: ProvenancePoint): boolean =>
+		pt.chatId === sourceId && (version === undefined || pt.messageId === version);
+	const ours = graph.nodes.filter((n) => n.provenance.some(ownPoint));
+	const ourChains = graph.chains.filter((c) => c.provenance.some(ownPoint));
 	if (ours.length === 0 && ourChains.length === 0) return "";
 	const lines: string[] = [];
 	lines.push("THE GRAPH SO FAR — everything already extracted from this source (reference these ids verbatim):");
@@ -744,6 +750,12 @@ export interface NotesImportInput {
 	filePath: string;
 	/** The file's raw content, VERBATIM — any format. */
 	text: string;
+	/** The vault sync's stable source id (survives renames). Absent → the
+	 *  deterministic path hash, as for every explicit import. */
+	sourceId?: string;
+	/** The vault sync's content version (sha256 hex): stamped into every
+	 *  provenance point as messageId and scoping the source digest. */
+	version?: string;
 }
 
 /** A notes import did not finish. Earlier graph writes and billed usage are
@@ -1267,7 +1279,7 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 
 	async function notesExtract(
 		jobKey: string,
-		input: { id: string; filePath: string; text: string; part?: { i: number; n: number } },
+		input: { id: string; filePath: string; text: string; version?: string; part?: { i: number; n: number } },
 	): Promise<NotesFindings> {
 		// jobKey (per-chunk jobs, owner 2026-09-28): the registry key —
 		// "src#i" for chunk jobs — so the abort signal reaches the call.
@@ -1278,7 +1290,7 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 		// Same digest law as the chat door (owner, 2026-09-30 evening): the
 		// chunk extractor continues its own source, ids verbatim.
 		const graph = getGraph(graphStore);
-		const digest = sourceDigest(graph, input.id);
+		const digest = sourceDigest(graph, input.id, input.version);
 		const prompt = digest === "" ? view : `${digest}\n\n${view}`;
 		console.info(
 			`[extraction ${jobKey}] notes extractor starting (${view.split("\n").length} source lines` +
@@ -1303,7 +1315,7 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 	// The notes auditor is the SAME identity-linker as the chat one (one
 	// schema now that attribution is gone) — audit() above, verbatim.
 
-	async function runNotesExtraction(input: { id: string; filePath: string; text: string; importedAt: string }): Promise<EmissionStats> {
+	async function runNotesExtraction(input: { id: string; filePath: string; text: string; version?: string; importedAt: string }): Promise<EmissionStats> {
 		const { id } = input;
 		// importNotes owns the source exclusion, including metadata and cleanup.
 		const t0 = performance.now();
@@ -1359,7 +1371,7 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 									findings,
 									auditResult,
 									{ chatStore, graphStore },
-									{ foldedAt: input.importedAt },
+									{ foldedAt: input.importedAt, anchor: input.version },
 								);
 								// Capture the committed merge BEFORE layout/usage can fail.
 								mergedStats.nodes += merged.nodes;
@@ -1418,7 +1430,7 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 	/** Every explicit import processes the whole file. Identity, source digest,
 	 * auditor and usage history remain source-scoped; this is not exactly-once. */
 	async function importNotes(input: NotesImportInput): Promise<EmissionStats> {
-		const id = `src_${crypto.createHash("sha256").update(input.filePath).digest("hex").slice(0, 12)}`;
+		const id = input.sourceId ?? `src_${crypto.createHash("sha256").update(input.filePath).digest("hex").slice(0, 12)}`;
 		// Acquire BEFORE source upsert: overlapping contents must not alter metadata.
 		if (inFlight.has(id)) throw new NotesImportError("busy", { nodes: 0, chains: 0 }, "This file is already being imported. Try again when it finishes.");
 		inFlight.add(id);

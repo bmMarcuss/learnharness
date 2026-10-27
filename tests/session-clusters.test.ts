@@ -57,6 +57,7 @@ function fakeStores(
 		readCoverage: () => [],
 		readSources: () =>
 			(over.sources ?? []).map((s) => ({ ...s, extractions: [] }) as unknown as NotesSource),
+		readVaultSync: () => [],
 		readPositions: () => ({}),
 		writePositions: () => {},
 	} as unknown as GraphStore;
@@ -139,8 +140,8 @@ describe("notes files as birth sessions", () => {
 			sources: [{ id: "src_abc", filePath: "/vault/learn vim.md", importedAt: "2026-09-22T00:00:00.000Z" }],
 		});
 		assert.deepEqual(graphSessionPropositions(deps, "src_abc"), [
-			{ nodeId: "a", name: "Alpha" },
-			{ nodeId: "b", name: "Beta" },
+			{ nodeId: "a", name: "Alpha", stale: false },
+			{ nodeId: "b", name: "Beta", stale: false },
 		]);
 	});
 });
@@ -246,8 +247,8 @@ describe("graphSessionPropositions (the per-session view)", () => {
 		];
 		const deps = fakeStores(nodes);
 		assert.deepEqual(graphSessionPropositions(deps, "chat1"), [
-			{ nodeId: "a", name: "Alpha" },
-			{ nodeId: "b", name: "Beta" },
+			{ nodeId: "a", name: "Alpha", stale: false },
+			{ nodeId: "b", name: "Beta", stale: false },
 		]);
 	});
 });

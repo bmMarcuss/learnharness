@@ -38,6 +38,7 @@ import type {
 	GraphNode,
 
 	NotesSource,
+	VaultSyncEntry,
 	SessionCheckpoint,
 	SessionFindings,
 } from "../src/core/contracts.ts";
@@ -85,6 +86,7 @@ function memoryLedgers() {
 	const coverage: CoverageEntry[] = [];
 	const sources = new Map<string, NotesSource>();
 	const positions = new Map<string, { x: number; y: number }>();
+	const vaultSync: VaultSyncEntry[] = [];
 		return {
 		appendNode: (n: GraphNode) => void nodes.push(n),
 		readNodes: () => nodes.map((n) => ({ ...n })),
@@ -109,6 +111,8 @@ function memoryLedgers() {
 				source.extractions = [...(source.extractions ?? []), entry];
 			}
 		},
+		appendVaultSync: (e: VaultSyncEntry) => void vaultSync.push({ ...e }),
+		readVaultSync: () => vaultSync.map((e) => ({ ...e })),
 		// Cluster labelings — mirrors the real store: append dedupes by id.
 		// The layout ledger — settleGraphLayout writes it after each merge.
 		readPositions: () => Object.fromEntries([...positions].map(([id, p]) => [id, { ...p }])),

@@ -67,6 +67,7 @@ import type {
 import { MIN_CLUSTER_SIZE } from "./clusters.ts";
 import { formatChainLine } from "./chains.ts";
 import { attachImpToCommunities, birthSessionOf, birthSessionPartition } from "./session-clusters.ts";
+import { staleGraphIds } from "./vault-sync.ts";
 import type { ChatStore, GraphStore } from "./ports.ts";
 
 /** The storage ports every graph operation needs, passed explicitly. */
@@ -109,6 +110,12 @@ export interface MergeSource {
 	 *  extracted batch — undefined (notes path / coverage-less callers) →
 	 *  the legacy whole-chat checkpoint is written instead. */
 	coverage?: CoverageEntry[];
+	/** The provenance anchor for points that carry no passage of their
+	 *  own — the vault sync's content version (core/vault-sync.ts). Rides
+	 *  every node point lacking a messageId and every chain point; a chain
+	 *  re-asserted under a NEW anchor appends (the new version supports
+	 *  it). Undefined → "" (chat-level), exactly as before. */
+	anchor?: string;
 }
 
 /** The run's provenance point. Chat-level by default (submit-schema slim,
@@ -175,7 +182,7 @@ export function mergeFindings(
 		// passage's messageId — it rides BOTH the create and the link-append
 		// line (each re-encounter anchors to ITS passage); absent (notes,
 		// legacy/core callers) → "", chat-level as before.
-		const points = pointOf(chatId, p.messageId);
+		const points = pointOf(chatId, p.messageId ?? source.anchor);
 		const linkTo = linkOf.get(p.id);
 		let graphNodeId: string;
 		if (linkTo !== undefined && existingIds.has(linkTo)) {
@@ -216,17 +223,19 @@ export function mergeFindings(
 	//    resolve through the job-local map OR pass through verbatim when
 	//    they name an existing node (digest references, ids verbatim);
 	//    chains carry the run's chat-level provenance point and
-	//    dedupe by (premises, conclusion) already asserted by THIS chat —
+	//    dedupe by (premises, conclusion) already asserted by THIS chat
+	//    under THIS anchor (a vault note's new version re-asserts) —
 	//    an assertion by another chat stays untouched (provenance unions
 	//    at read time; a known argument re-stated appends under the SAME
 	//    arg_ id — link-style, exactly like node link-appends; the first
 	//    line's premises/createdAt stand at read time).
+	const chainPoint = pointOf(chatId, source.anchor)[0]!;
 	const assertedByChat = new Set<string>();
 	const idOfKey = new Map<string, string>();
 	for (const line of ledgers.readChains()) {
 		const key = chainKey(line.premises, line.conclusion);
 		if (!idOfKey.has(key)) idOfKey.set(key, line.id);
-		if (line.provenance.some((pt) => pt.chatId === chatId)) assertedByChat.add(key);
+		if (line.provenance.some((pt) => samePoint(pt, chainPoint))) assertedByChat.add(key);
 	}
 	const emitChain = (chain: ExtractedChain): void => {
 		// Mixed namespace (digest-aware extraction, 2026-09-30): an
@@ -247,7 +256,7 @@ export function mergeFindings(
 		const key = chainKey(premises, conclusion);
 		if (assertedByChat.has(key)) return; // this chat already asserted this argument
 		const id = idOfKey.get(key) ?? newGraphChainId();
-		ledgers.appendChain({ id, premises, conclusion, createdAt: now, provenance: pointOf(chatId) });
+		ledgers.appendChain({ id, premises, conclusion, createdAt: now, provenance: [chainPoint] });
 		idOfKey.set(key, id);
 		assertedByChat.add(key);
 		stats.chains!++;
@@ -594,6 +603,7 @@ export function graphSnapshot(deps: GraphDeps): GraphSnapshot {
 		fileSources,
 		nodeSessions,
 		clusters,
+		stale: staleGraphIds(graph, deps.graphStore.readVaultSync()),
 		...(Object.keys(positions).length > 0 ? { positions } : {}),
 	};
 }
@@ -673,14 +683,18 @@ export interface GraphSessionProposition {
 	nodeId: string;
 	/** The compact handle — the same name the canvas shows. */
 	name: string;
+	/** Only outdated vault-note versions support it (core/vault-sync.ts). */
+	stale: boolean;
 }
 
 /** The propositions BORN in one session — what that session first
  *  articulated. Members sorted by node id — deterministic. */
 export function graphSessionPropositions(deps: GraphDeps, sessionId: string): GraphSessionProposition[] {
-	const born = getGraph(deps.graphStore).nodes.filter((node) => birthSessionOf(node) === sessionId);
+	const graph = getGraph(deps.graphStore);
+	const stale = new Set(staleGraphIds(graph, deps.graphStore.readVaultSync()));
+	const born = graph.nodes.filter((node) => birthSessionOf(node) === sessionId);
 	return born
-		.map((node) => ({ nodeId: node.id, name: node.name }))
+		.map((node) => ({ nodeId: node.id, name: node.name, stale: stale.has(node.id) }))
 		.sort((a, b) => (a.nodeId < b.nodeId ? -1 : 1));
 }
 

@@ -14,6 +14,7 @@ import { SubscriptionRequestCycle, type SubscriptionDispatchLifecycle } from "..
 import { reconstructRequestCause } from "../core/native-messages.ts";
 import { createJobRunner } from "../agent/subagents/runner.ts";
 import { createExtractionPipeline } from "../agent/subagents/extraction.ts";
+import { createVaultSync } from "./vault-sync.ts";
 import type { ModelRole } from "../../config.ts";
 import {
 	deliverJobResult,
@@ -121,6 +122,13 @@ export const extraction = createExtractionPipeline({
 	// refuses BEFORE any batch runs (the typed throw), never mid-run.
 	providerKeyMissing: (provider, tier) =>
 		providerKeyPresent(provider) ? null : providerKeyMissingEnvelope(provider, [tier]),
+});
+/** The manual vault sync (POST /api/graph/vault-sync) — a third caller of
+ *  the same pipeline's notes door, so it shares the single-flight registry. */
+export const vaultSync = createVaultSync({
+	graphStore: stores.graphStore,
+	importNotes: (input) => extraction.importNotes(input),
+	vaultPath: () => effectiveSettings().graph.vaultPath,
 });
 
 

@@ -46,6 +46,7 @@ function fakeStores(
 		readCheckpoints: () => [],
 		readCoverage: () => [],
 		readSources: () => [],
+		readVaultSync: () => [],
 		readPositions: () => ({}),
 		writePositions: () => {},
 		readClusterLabels: () => [],

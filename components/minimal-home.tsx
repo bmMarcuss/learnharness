@@ -19,10 +19,10 @@
  * lifts the pick set; the chip opens the overlay in select mode).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListTreeIcon, UploadIcon } from "lucide-react";
+import { FolderSyncIcon, ListTreeIcon, UploadIcon } from "lucide-react";
 import { ChainTableOverlay } from "@/components/chain-table.tsx";
 import { GraphCostControl } from "@/components/graph-view.tsx";
-import { NotesImportErrors, useNotesImport } from "@/components/notes-import.tsx";
+import { NotesImportErrors, useNotesImport, useVaultSync } from "@/components/notes-import.tsx";
 import { Hint } from "@/components/ui/hint";
 import type { ChatSummary, GraphCostSummary, GraphSnapshot } from "@/src/core";
 
@@ -126,6 +126,7 @@ export function MinimalHome({
 	// Refetch even after incomplete imports: earlier writes and spend remain.
 	const notesImport = useNotesImport({ onFinish: readState });
 	const { importing, onImportFiles } = notesImport;
+	const vaultSync = useVaultSync({ onFinish: readState });
 
 	const teachSessions = chats.filter((c) => c.kind === "teach").length;
 	const practiceSessions = chats.filter((c) => c.kind === "practice").length;
@@ -179,7 +180,7 @@ export function MinimalHome({
 							</button>
 						</Hint>
 					</div>
-					<div className="shrink-0 rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur">
+					<div className="flex shrink-0 rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur">
 						<Hint label="Import notes into the graph" side="bottom">
 							<button
 								type="button"
@@ -192,9 +193,25 @@ export function MinimalHome({
 								{importing ? "Importing…" : "Import notes…"}
 							</button>
 						</Hint>
+						<Hint label="Import new and changed Concepts/ notes from your vault" side="bottom">
+							<button
+								type="button"
+								disabled={vaultSync.syncing}
+								onClick={vaultSync.sync}
+								data-testid="sync-vault"
+								className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
+							>
+								<FolderSyncIcon className="size-3" />
+								{vaultSync.syncing ? "Syncing…" : "Sync vault"}
+							</button>
+						</Hint>
 					</div>
 				</div>
 				<NotesImportErrors errors={notesImport.errors} />
+				{vaultSync.summary && (
+					<p role="status" className="max-w-full text-xs text-muted-foreground">{vaultSync.summary}</p>
+				)}
+				<NotesImportErrors errors={vaultSync.errors} />
 				{costs && costs.runs.length > 0 && <GraphCostControl costs={costs} />}
 			</div>
 
@@ -209,6 +226,7 @@ export function MinimalHome({
 				chains={snapshot?.chains ?? []}
 				sessions={snapshot?.sessions ?? {}}
 				fileSources={snapshot?.fileSources ?? {}}
+				stale={new Set(snapshot?.stale ?? [])}
 				onClose={() => {
 					setChainsOpen(false);
 					onChainSelectClose?.();

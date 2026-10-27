@@ -1,9 +1,10 @@
 import * as fs from "node:fs";
-import { LEDGER_FILES, POSITIONS_FILE } from "../../config.ts";
+import { LEDGER_FILES, POSITIONS_FILE, VAULT_SYNC_FILE } from "../../config.ts";
 import type { GraphSnapshot } from "../core/contracts.ts";
 import type { GraphCostSummary } from "../core/cost-summary.ts";
 import { graphCostSummary } from "../core/cost-summary.ts";
-import { graphSnapshot } from "../core/graph.ts";
+import { getGraph, graphSnapshot } from "../core/graph.ts";
+import { staleGraphIds } from "../core/vault-sync.ts";
 import { birthSessionPartition } from "../core/session-clusters.ts";
 import {
 	deleteNodeTraces,
@@ -21,6 +22,13 @@ import { callCost } from "./pricing.ts";
  */
 export function graphView(): GraphSnapshot {
 	return graphSnapshot(stores);
+}
+
+/** Proposition + chain ids only outdated vault-note versions support
+ *  (core/vault-sync.ts) — for callers that need staleness without the
+ *  whole snapshot (practice picks). */
+export function staleGraphItemIds(): Set<string> {
+	return new Set(staleGraphIds(getGraph(stores.graphStore), stores.graphStore.readVaultSync()));
 }
 
 /** The graph view's cost surface (GET /api/graph/costs — the 2026-09 cost
@@ -60,6 +68,7 @@ export function graphRevision(): number {
 		LEDGER_FILES.sessions,
 		LEDGER_FILES.coverage,
 		POSITIONS_FILE,
+		VAULT_SYNC_FILE, // a new current version can change what is stale
 	]) {
 		try {
 			revision = Math.max(revision, fs.statSync(file).mtimeMs);

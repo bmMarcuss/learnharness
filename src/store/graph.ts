@@ -20,6 +20,9 @@
  * build is deleted once, here, at adapter load (same doctrine as the
  * events-ledger purge below).
  *
+ * Plus config.VAULT_SYNC_FILE (vault-sync.jsonl, VaultSyncEntry): one
+ * line per completed vault-note version — the vault sync's own ledger.
+ *
  * Plus config.SOURCES_FILE (sources.json): the imported-notes bookkeeping
  * (NOT a ledger) — one JSON map, src-id → NotesSource, read-modify-write
  * like a chat file. The format-agnostic front door (2026-09-13).
@@ -34,7 +37,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { LEDGER_FILES, POSITIONS_FILE, SOURCES_FILE } from "../../config.ts";
+import { LEDGER_FILES, POSITIONS_FILE, SOURCES_FILE, VAULT_SYNC_FILE } from "../../config.ts";
 import { assertGraphFormat, ensureGraphFormat } from "./graph-format.ts";
 import type {
 	GraphChain,
@@ -45,6 +48,7 @@ import type {
 	ProvenancePoint,
 	CoverageEntry,
 	SessionCheckpoint,
+	VaultSyncEntry,
 } from "../core/contracts.ts";
 import type { GraphStore } from "../core/ports.ts";
 
@@ -126,6 +130,9 @@ const isCheckpoint = (v: unknown): v is SessionCheckpoint =>
 const isCoverageEntry = (v: unknown): v is CoverageEntry =>
 	isRecord(v) && isString(v.chatId) && isString(v.fp) && typeof v.tokens === "number" && isString(v.foldedAt);
 
+const isVaultSyncEntry = (v: unknown): v is VaultSyncEntry =>
+	isRecord(v) && isString(v.sourceId) && isString(v.relPath) && isString(v.contentHash) && isString(v.syncedAt);
+
 // ─── the port implementation ────────────────────────────────────────────────
 
 export const graphStore: GraphStore = {
@@ -183,6 +190,14 @@ export const graphStore: GraphStore = {
 			? source.extractions
 			: [...(source.extractions ?? []), entry];
 		writeSourceMap(all);
+	},
+
+	// ── the vault-sync ledger (config.VAULT_SYNC_FILE — append-only) ──
+	appendVaultSync(entry: VaultSyncEntry): void {
+		appendLine(VAULT_SYNC_FILE, entry);
+	},
+	readVaultSync(): VaultSyncEntry[] {
+		return readValid(VAULT_SYNC_FILE, isVaultSyncEntry);
 	},
 
 	// ── the layout ledger (config.POSITIONS_FILE — a JSON map) ──

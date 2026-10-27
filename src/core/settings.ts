@@ -336,6 +336,11 @@ export interface GraphSettings {
 	 *  delays extraction — the user's stated cost/thoroughness tradeoff,
 	 *  not a misconfiguration to police. */
 	extractionChunkTokens?: number;
+	/** The Obsidian vault the "Sync vault" action reads (vault sync,
+	 *  core/vault-sync.ts): an absolute path as the RUNNING app sees it —
+	 *  a Windows path is translated to /mnt/<drive> only under WSL. The
+	 *  sync reads <vaultPath>/Concepts/*.md. Empty (the factory) = unset. */
+	vaultPath?: string;
 }
 
 /**
@@ -405,7 +410,7 @@ export const FACTORY_SETTINGS: FactorySettings = {
 		sessionNameSerif: true,
 		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null },
 	},
-	graph: { enabled: true, rendering: true, extractionChunkTokens: 4096 },
+	graph: { enabled: true, rendering: true, extractionChunkTokens: 4096, vaultPath: "" },
 	compaction: { thresholdTokens: 150_000 },
 };
 
@@ -582,6 +587,7 @@ function sanitizeGraph(raw: Record<string, unknown>): GraphSettings {
 	if (typeof rawTokens === "number" && Number.isFinite(rawTokens) && rawTokens > 0) {
 		out.extractionChunkTokens = Math.max(EXTRACTION_CHUNK_TOKENS_FLOOR, Math.floor(rawTokens));
 	}
+	if (typeof raw.vaultPath === "string" && raw.vaultPath.trim() !== "") out.vaultPath = raw.vaultPath.trim();
 	return out;
 }
 

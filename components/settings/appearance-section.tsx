@@ -423,6 +423,17 @@ export function GraphSection({
 					}}
 				/>
 			</SettingsRow>
+			{/* VAULT SYNC: where "Sync vault" reads <vault>/Concepts/*.md.
+			    Empty = unset (the button then explains what to do). */}
+			<SettingsRow label="Vault folder" hint="Sync vault reads its Concepts/ notes" testid="graph-row-vault-path">
+				<CommitInput
+					value={graph?.vaultPath ?? ""}
+					placeholder="/path/to/vault"
+					ariaLabel="vault folder"
+					testid="input-vault-path"
+					onCommit={(v) => onSectionChange({ ...graph, vaultPath: v.trim() === "" ? undefined : v.trim() })}
+				/>
+			</SettingsRow>
 		</>
 	);
 }

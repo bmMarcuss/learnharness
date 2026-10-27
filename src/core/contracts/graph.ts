@@ -104,6 +104,25 @@ export interface NotesSource {
 	extractions?: ExtractionRunUsage[];
 }
 
+/** One vault-sync ledger line (vault-sync.jsonl): a vault note's content
+ *  version became CURRENT for its source — written only after the import
+ *  completed (or a rename was recognized), never on failure, so a failed
+ *  version retries on the next sync. A source's current version is its
+ *  LATEST line. Vault-synced notes provenance carries the version hash as
+ *  its messageId; a proposition or chain whose every point is vault-synced
+ *  and none names its source's current version is STALE (derived at read,
+ *  core/vault-sync.ts — nothing is ever deleted). */
+export interface VaultSyncEntry {
+	/** The notes source id ("src_…") — stable across renames. */
+	sourceId: string;
+	/** Vault-relative path ("Concepts/Foo.md") — also the source's filePath. */
+	relPath: string;
+	/** sha256 hex of the file's content at this version. */
+	contentHash: string;
+	/** ISO — when this version became current. */
+	syncedAt: string;
+}
+
 /** What one cluster-naming refresh did — the namer's ClusterRefreshStats,
  *  contract-shaped so the agent layer needs no contracts import.
  *  Structural twins stay interchangeable. */
@@ -340,6 +359,9 @@ export interface GraphSnapshot {
 	 * nodes are never partitioned. Purely provenance-derived — never
 	 * depends on layout. */
 	clusters: Cluster[];
+	/** Proposition and chain ids whose vault notes changed since they were
+	 *  extracted (core/vault-sync.ts staleGraphIds) — derived, sorted. */
+	stale: string[];
 	/** Resting layout positions per node id, when a positions ledger
 	 *  exists (core/layout.ts settle writes it). Absent on a fresh graph —
 	 *  the view then falls back to its own one-shot forceAtlas2 pass. */
